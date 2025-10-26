@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>속기사 화면</title>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <style>
+    body{font-family:"Malgun Gothic","맑은 고딕",sans-serif;padding:24px;background:#f0f4f8;}
+    textarea{width:90%;height:50vh;font-size:1.6rem;padding:12px;border-radius:10px;}
+    #jobInfo{margin-top:12px;font-weight:600}
+    button{padding:10px 14px;border-radius:8px;border:none;background:#111;color:#fff;cursor:pointer}
+  </style>
+</head>
+<body>
+  <h2>속기사 입력창</h2>
+  <button id="createJob">세션 생성(랜덤 PIN)</button>
+  <div id="jobInfo">세션 없음. 생성하세요.</div>
+
+  <textarea id="input" placeholder="여기에 치고 스페이스/엔터를 누르면 실시간 반영됩니다."></textarea>
+
+  <script>
+    const socket = io();
+    const input = document.getElementById('input');
+    const createBtn = document.getElementById('createJob');
+    const jobInfo = document.getElementById('jobInfo');
+
+    let currentJobId = null;
+
+    createBtn.addEventListener('click', async () => {
+      const res = await fetch('/create_job', { method: 'POST' });
+      const j = await res.json();
+      currentJobId = j.job_id;
+      jobInfo.textContent = `Job: ${j.job_id}   PIN: ${j.pin}  (이 PIN을 이용자에게 알려주세요)`;
+    });
+
+    // IME 대응: composition 상태 추적
+    let composing = false;
+    input.addEventListener('compositionstart', ()=> composing = true);
+    input.addEventListener('compositionend',   ()=> composing = false);
+
+    // space/enter에서 전체 텍스트 전송 (job_id와 함께)
+    input.addEventListener('keyup', (e) => {
+      if (composing) return;
+      if (!currentJobId) return; // 세션 먼저 생성하세요
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+        const text = input.value;
+        socket.emit('full_text', { job_id: currentJobId, text: text });
+      }
+    });
+
+    // (선택) 페이지 닫을 때 job 종료 요청 가능
+    window.addEventListener('beforeunload', async () => {
+      if (currentJobId) {
+        try {
+          await fetch('/end_job', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ job_id: currentJobId })
+          });
+        } catch(e){}
+      }
+    });
+  </script>
+</body>
+</html>

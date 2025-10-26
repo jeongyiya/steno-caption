@@ -1,0 +1,127 @@
+<head>
+  <meta charset="utf-8" />
+  <title>이용자 화면</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <style>
+    :root {
+      /* 동적으로 JS가 채워줄 하단 안전 여백(px) */
+      --bottom-safe: 32px;   /* 기본값(안드/아이폰 없는 환경 대비) */
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #000;
+      color: #fff;
+      font-family: "Malgun Gothic","맑은 고딕",system-ui,-apple-system,Segoe UI,Arial,sans-serif;
+      overflow: hidden; /* 페이지 자체 스크롤 금지 */
+    }
+
+    /* 큰 글씨 기본값은 그대로 유지 */
+    body {
+      font-size: 3rem;  /* PC */
+      line-height: 1.5;
+      padding: calc(env(safe-area-inset-top, 0px) + 10px)
+               10px
+               calc(env(safe-area-inset-bottom, 0px) + 10px)
+               10px;
+      box-sizing: border-box;
+    }
+    @media (orientation: portrait) {
+      body { font-size: 8vw; line-height: 1.6; padding: 4vw; }
+    }
+
+    /* ✅ 자막 박스: 100dvh 사용 + 하단 안전 여백만큼 추가 패딩 */
+    #output {
+      /* 보이는 실제 높이를 기준으로 컨테이너 높이 계산 */
+      height: calc(100dvh
+        - env(safe-area-inset-top, 0px)
+        - env(safe-area-inset-bottom, 0px)
+        - 2vh);
+
+      max-width: 100%;
+      margin: 0 auto;
+      padding:
+        2vw 3vw
+        calc(2vw + var(--bottom-safe));  /* ⬅ 하단을 여유 있게 띄워 가림 방지 */
+      box-sizing: border-box;
+
+      background: #111;
+      border: 2px solid #444;
+      border-radius: 12px;
+
+      white-space: pre-wrap;
+      word-break: break-word;
+
+      overflow-y: auto;                 /* 내부 스크롤 */
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+      scroll-behavior: auto;            /* 강제 즉시 스크롤 */
+      text-shadow: 2px 2px 5px rgba(0,0,0,0.8);
+    }
+  </style>
+</head>
+<body>
+  <div id="output"></div>
+
+  <script>
+    const socket = io();
+    const output = document.getElementById('output');
+
+    // ---- 하단 안전영역 계산 (모바일 하단 바/툴바/키보드 등 가림 보정) ----
+    function updateBottomSafe() {
+      let extra = 32; // 기본
+      const vv = window.visualViewport;
+      if (vv) {
+        // 레이아웃 뷰포트에 대해 실제 보이는 영역이 얼마나 덜 보이는지(아래가 얼마나 가려졌는지)
+        const obscuredBottom = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
+        // 너무 작게 잡히지 않도록 최소 여백 보장
+        extra = Math.max(24, Math.round(obscuredBottom + 8));
+      }
+      // 노치/홈 인디케이터 안전영역도 함께 고려하고 싶으면 여기에 더해도 됨
+      document.documentElement.style.setProperty('--bottom-safe', extra + 'px');
+    }
+
+    // ---- 초강력 자동 스크롤 (여러 프레임에 걸쳐 보장) ----
+    function scrollToBottomNow() { output.scrollTop = output.scrollHeight; }
+    function scrollToBottomHard() {
+      scrollToBottomNow();
+      requestAnimationFrame(() => {
+        scrollToBottomNow();
+        requestAnimationFrame(() => {
+          scrollToBottomNow();
+          setTimeout(scrollToBottomNow, 16);
+          setTimeout(scrollToBottomNow, 60);
+          setTimeout(scrollToBottomNow, 140);
+        });
+      });
+    }
+
+    // ---- 텍스트 수신 시: 하단 보정 → 교체 → 강제 스크롤 ----
+    socket.on('show_full_text', (text) => {
+      updateBottomSafe();      // ⬅ 먼저 하단 여백을 최신 상태로
+      output.textContent = text;
+      scrollToBottomHard();
+    });
+
+    // ---- 환경 변화에도 하단 보정 + 자동 스크롤 ----
+    function refreshLayout() { updateBottomSafe(); scrollToBottomHard(); }
+
+    // VisualViewport 변화 (툴바/키보드/주소창 등장 등)
+    if (window.visualViewport) {
+      visualViewport.addEventListener('resize', refreshLayout);
+      visualViewport.addEventListener('scroll', refreshLayout);
+    }
+
+    // 회전/리사이즈/다시 보임 각각 복구
+    window.addEventListener('resize', refreshLayout);
+    window.addEventListener('orientationchange', () => setTimeout(refreshLayout, 150));
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') setTimeout(refreshLayout, 50);
+    });
+
+    // 초기 1회
+    refreshLayout();
+  </script>
+</body>
